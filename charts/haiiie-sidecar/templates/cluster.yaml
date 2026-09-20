@@ -1,0 +1,110 @@
+{{- $name := include "haiiie-sidecar.clusterName" . -}}
+{{- $secure := not .Values.yesno.config.allowInsecure -}}
+{{- if and $secure (not .Values.yesno.config.certManager) -}}
+{{- fail "secure mode requires yesno.config.certManager" -}}
+{{- end -}}
+{{- if and $secure (or .Values.plugin.flight.enabled .Values.plugin.control.enabled) -}}
+{{- fail "secure mode cannot enable peer Flight or control until haiiie supports operator mTLS credentials" -}}
+{{- end -}}
+{{- if and .Values.plugin.index.createDims (not .Values.plugin.flight.enabled) -}}
+{{- fail "plugin.index.createDims requires plugin.flight.enabled so the peer can initialize the index" -}}
+{{- end -}}
+{{- if and .Values.plugin.index.residualModelPath .Values.plugin.index.createDims (ne (int .Values.plugin.index.createDims) 512) -}}
+{{- fail "a new residual index needs plugin.index.createDims=512 and a model inside the image" -}}
+{{- end -}}
+apiVersion: yesnodb.io/v1alpha1
+kind: YesnoCluster
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/name: haiiie-sidecar
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  image: {{ required "yesno.image is required" .Values.yesno.image | quote }}
+  imagePullPolicy: {{ .Values.yesno.imagePullPolicy }}
+  instances: {{ .Values.yesno.instances }}
+  failoverDelaySecs: {{ .Values.yesno.failoverDelaySecs }}
+  shutdownGraceSecs: {{ .Values.yesno.shutdownGraceSecs }}
+  shards: {{ .Values.yesno.shards }}
+  storage:
+    size: {{ required "yesno.storage.size is required" .Values.yesno.storage.size | quote }}
+    {{- with .Values.yesno.storage.storageClassName }}
+    storageClassName: {{ . | quote }}
+    {{- end }}
+  config:
+    {{- if $secure }}
+    certManager:
+{{ toYaml .Values.yesno.config.certManager | indent 6 }}
+    {{- else }}
+    allowInsecure: true
+    {{- end }}
+  {{- with .Values.yesno.resources }}
+  resources:
+{{ toYaml . | indent 4 }}
+  {{- end }}
+  plugin:
+    image: {{ required "plugin.image is required" .Values.plugin.image | quote }}
+    imagePullPolicy: {{ .Values.plugin.imagePullPolicy }}
+    args:
+      - --peer-socket
+      - /run/yesno/plugin.sock
+      - --listen
+      - {{ printf "0.0.0.0:%v" .Values.plugin.port | quote }}
+      - --namespace
+      - {{ .Values.plugin.index.namespace | quote }}
+      {{- with .Values.plugin.index.createDims }}
+      - --create-dims
+      - {{ . | quote }}
+      {{- end }}
+      {{- with .Values.plugin.index.residualModelPath }}
+      - --residual-model
+      - {{ . | quote }}
+      {{- end }}
+      {{- with .Values.plugin.threads }}
+      - --threads
+      - {{ . | quote }}
+      {{- end }}
+      {{- if .Values.plugin.flight.enabled }}
+      - --flight-endpoint
+      - {{ required "plugin.flight.endpoint is required when enabled" .Values.plugin.flight.endpoint | quote }}
+      {{- end }}
+      {{- if .Values.plugin.control.enabled }}
+      - --control-endpoint
+      - {{ required "plugin.control.endpoint is required when enabled" .Values.plugin.control.endpoint | quote }}
+      {{- end }}
+    env:
+      RUST_LOG: {{ .Values.plugin.rustLog | quote }}
+    ports:
+      - name: haiiie-grpc
+        containerPort: {{ .Values.plugin.port }}
+    # The operator owns /run/yesno as a shared emptyDir and mounts no data PVC
+    # in the plugin container. Its default uid matches yesnod's socket owner.
+    readinessProbe:
+      exec:
+        command:
+          - /usr/local/bin/haiiie
+          - --server
+          - {{ printf "http://127.0.0.1:%v" .Values.plugin.port | quote }}
+          - describe
+{{ toYaml .Values.plugin.probes.readiness | indent 6 }}
+    livenessProbe:
+      tcpSocket:
+        port: haiiie-grpc
+{{ toYaml .Values.plugin.probes.liveness | indent 6 }}
+    startupProbe:
+      exec:
+        command:
+          - /usr/local/bin/haiiie
+          - --server
+          - {{ printf "http://127.0.0.1:%v" .Values.plugin.port | quote }}
+          - describe
+{{ toYaml .Values.plugin.probes.startup | indent 6 }}
+    {{- with .Values.plugin.channel }}
+    channel:
+{{ toYaml . | indent 6 }}
+    {{- end }}
+    {{- with .Values.plugin.resources }}
+    resources:
+{{ toYaml . | indent 6 }}
+    {{- end }}

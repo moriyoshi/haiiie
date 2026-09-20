@@ -1,0 +1,42 @@
+{{- $name := include "haiiie-sidecar.clusterName" . -}}
+{{- if .Values.service.leader.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-haiiie-rw
+  labels:
+    app.kubernetes.io/name: haiiie-sidecar
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/name: yesnodb
+    app.kubernetes.io/instance: {{ $name }}
+    yesnodb.io/role: leader
+  ports:
+    - name: grpc
+      port: {{ .Values.service.port }}
+      targetPort: haiiie-grpc
+      protocol: TCP
+{{- end }}
+{{- if .Values.service.followers.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-haiiie-ro
+  labels:
+    app.kubernetes.io/name: haiiie-sidecar
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/name: yesnodb
+    app.kubernetes.io/instance: {{ $name }}
+    yesnodb.io/role: follower
+  ports:
+    - name: grpc
+      port: {{ .Values.service.port }}
+      targetPort: haiiie-grpc
+      protocol: TCP
+{{- end }}

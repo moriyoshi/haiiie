@@ -1,0 +1,6 @@
+# Pinned so a gate run is reproducible. The floor that matters is
+# `rust-version = "1.89"` in the workspace manifest: it is yesno-core's MSRV,
+# and haiiie must never force a yesnodb consumer to upgrade to adopt it.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]

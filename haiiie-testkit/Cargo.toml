@@ -1,0 +1,24 @@
+[package]
+name = "haiiie-testkit"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Deliberately not a dev-dependency of haiiie-core: the oracle is a crate in its
+# own right so that a future `haiiie-cli` or benchmark can score against it too.
+[dependencies]
+haiiie-core = { path = "../haiiie-core" }
+
+[dev-dependencies]
+# Test-only, and deliberately not a normal dependency: `generators.rs` asserts
+# which **container kinds** the corpora produce, which is a fact about the
+# storage engine's representation and cannot be observed through haiiie's own
+# API. Adding it here keeps this crate's normal dependency count at one.
+yesno-core = { path = "../../yesno/yesno-core" }
+proptest = "1"
+tempfile = "3"
+
+[lints]
+workspace = true

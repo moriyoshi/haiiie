@@ -1,0 +1,25 @@
+[package]
+name = "haiiie-proto"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Generated types only. Kept separate from `haiiie-grpc` so a caller that wants
+# the message definitions -- to build a request, or to talk to the service from
+# another runtime -- does not pull in tonic, tokio and a transport stack.
+[dependencies]
+prost = "0.13"
+tonic = { version = "0.12", default-features = false, features = ["codegen", "prost"] }
+
+[build-dependencies]
+tonic-build = { version = "0.12", default-features = false, features = ["prost"] }
+# Supplies `protoc` so the build needs nothing installed on the host. Upstream's
+# gates take the same line -- Docker is their only host dependency -- and a
+# build that silently depends on a system package is one that works on the
+# machine it was written on.
+protoc-bin-vendored = "3"
+
+[lints]
+workspace = true

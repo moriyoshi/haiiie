@@ -1,0 +1,31 @@
+[package]
+name = "haiiie-peer"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+haiiie-core = { path = "../haiiie-core" }
+yesno-plugin = { path = "../../yesno/yesno-plugin" }
+memmap2 = "0.9"
+rustix = { version = "1.1", features = ["net"] }
+yesno-flight = { path = "../../yesno/yesno-flight", default-features = false }
+tokio = { version = "1", features = ["rt", "net"] }
+tonic = { version = "0.14", features = ["tls-ring"] }
+tonic-prost = "0.14"
+prost = "0.14"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+yesno-core = { path = "../../yesno/yesno-core" }
+proptest = "1"
+arrow-flight = "59.2"
+tonic = "0.14"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+yesno-flight = { path = "../../yesno/yesno-flight", features = ["server"] }
+
+[lints]
+workspace = true

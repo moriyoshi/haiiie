@@ -1,0 +1,29 @@
+[package]
+name = "haiiie-cli"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+haiiie-core = { path = "../haiiie-core" }
+haiiie-grpc = { path = "../haiiie-grpc" }
+haiiie-embed = { path = "../haiiie-embed" }
+haiiie-proto = { path = "../haiiie-proto" }
+haiiie-peer = { path = "../haiiie-peer" }
+clap = { version = "4", features = ["derive"] }
+nalgebra = "0.34"
+rayon = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio-stream = "0.1"
+tonic = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

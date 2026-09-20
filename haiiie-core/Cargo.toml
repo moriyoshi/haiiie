@@ -1,0 +1,27 @@
+[package]
+name = "haiiie-core"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# Two direct dependencies, enforced by scripts/check-deps.py. Arrow types are
+# reached through `yesno_core::unstable_arrow`'s re-export, so haiiie-core does
+# not depend on arrow-buffer itself and must not start.
+[dependencies]
+thiserror = "2"
+# Compaction disk reclamation requires yesno 03cd5a3 or a descendant. This
+# sibling path does not enforce that revision; pin it before release.
+yesno-core = { path = "../../yesno/yesno-core" }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "accumulate"
+harness = false
+
+[lints]
+workspace = true

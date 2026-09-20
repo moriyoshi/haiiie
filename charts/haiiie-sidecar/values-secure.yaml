@@ -1,0 +1,18 @@
+# Read-only secure profile. Requires an existing haiiie index in the PVC.
+# Replace the Issuer and CA Secret names with resources in this namespace.
+yesno:
+  config:
+    allowInsecure: false
+    certManager:
+      issuerRef:
+        name: yesno-ca
+      caSecretRef:
+        name: yesno-root-ca
+        key: tls.crt
+plugin:
+  index:
+    createDims: null
+  flight:
+    enabled: false
+  control:
+    enabled: false

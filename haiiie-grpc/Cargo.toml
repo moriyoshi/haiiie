@@ -1,0 +1,25 @@
+[package]
+name = "haiiie-grpc"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+haiiie-core = { path = "../haiiie-core" }
+haiiie-proto = { path = "../haiiie-proto" }
+haiiie-embed = { path = "../haiiie-embed" }
+tonic = "0.12"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
+tokio-stream = "0.1"
+prost = "0.13"
+rayon = "1"
+tracing = "0.1"
+
+
+[dev-dependencies]
+haiiie-testkit = { path = "../haiiie-testkit" }
+
+[lints]
+workspace = true

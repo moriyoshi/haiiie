@@ -1,0 +1,258 @@
+syntax = "proto3";
+
+package haiiie.v1;
+
+// Exact top-k over caller-defined binary codes or model-bound residual codes.
+// Stored rows, posting lists, and accumulator planes remain server internals.
+service Haiiie {
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc Explain(ExplainRequest) returns (ExplainResponse);
+  rpc Count(CountRequest) returns (CountResponse);
+
+  // The server commits after complete ingest chunks to bound memory, including
+  // within a stream message. A failed stream can leave a committed prefix.
+  // Each document remains atomic, and writing the same id and value again is
+  // idempotent.
+  rpc Ingest(stream IngestRequest) returns (IngestResponse);
+
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+}
+
+message Code {
+  oneof representation {
+    // Word-packed bits, LSB-first within each 64-bit word.
+    DenseCode dense = 1;
+    // Ascending, unique set-bit positions.
+    SparseCode sparse = 2;
+  }
+}
+
+message DenseCode {
+  repeated fixed64 words = 1 [packed = true];
+}
+
+message SparseCode {
+  repeated uint32 positions = 1 [packed = true];
+}
+
+message Embedding {
+  repeated float values = 1 [packed = true];
+}
+
+enum Metric {
+  METRIC_UNSPECIFIED = 0;
+  // |q AND x|.
+  METRIC_DOT = 1;
+  // Hamming distance, ranked as its negation so larger is better.
+  METRIC_HAMMING = 2;
+  // |q AND x| / |q OR x|.
+  METRIC_JACCARD = 3;
+  // |q AND x| / sqrt(|q| * |x|).
+  METRIC_COSINE = 4;
+}
+
+message BinaryQuery {
+  Code code = 1;
+  Metric metric = 2;
+}
+
+message ResidualQuery {
+  Embedding embedding = 1;
+}
+
+// Exactly one query representation crosses the boundary. The index kind must
+// match it: binary codes cannot query a model-bound residual index and a float
+// embedding cannot query a caller-defined binary index.
+message Query {
+  oneof kind {
+    BinaryQuery binary = 1;
+    ResidualQuery residual = 2;
+  }
+}
+
+// Recursive boolean filter evaluated before scoring.
+message MatchAll {}
+message MatchNone {}
+
+message Filter {
+  message Clauses { repeated Filter clauses = 1; }
+  message IdList { repeated uint64 ids = 1 [packed = true]; }
+  message IdRange {
+    uint64 lo = 1;
+    uint64 hi = 2; // Exclusive.
+  }
+
+  oneof kind {
+    MatchAll all = 1;
+    MatchNone none = 2;
+    uint32 term = 3;
+    IdList ids = 4;
+    IdRange id_range = 5;
+    Clauses and = 6;
+    Clauses or = 7;
+    // Complemented within the live set.
+    Filter not = 8;
+  }
+}
+
+enum Consistency {
+  CONSISTENCY_UNSPECIFIED = 0;
+  // One snapshot for the whole scan; an eviction is an error.
+  CONSISTENCY_STRICT = 1;
+  // Retry the failed block on a fresh snapshot. The response reports the
+  // version span because the result is then exact for no single version.
+  CONSISTENCY_RESUME_ON_EVICTION = 2;
+}
+
+message ScanPolicy {
+  Consistency consistency = 1;
+  // Retries for CONSISTENCY_RESUME_ON_EVICTION. Zero uses the server default.
+  uint32 max_retries = 2;
+}
+
+message SearchRequest {
+  Query query = 1;
+  uint32 limit = 2;
+  Filter filter = 3;
+  ScanPolicy scan = 4;
+}
+
+message ExplainRequest {
+  Query query = 1;
+  uint32 limit = 2;
+  Filter filter = 3;
+}
+
+message CountRequest {
+  Filter filter = 1;
+}
+
+message ExactScore {
+  sint64 numerator = 1;
+  uint64 denominator = 2;
+  // The value is sqrt(numerator / denominator). Used by cosine.
+  bool square_root = 3;
+}
+
+message BinaryScore {
+  uint32 intersection = 1;
+  uint32 document_weight = 2;
+  ExactScore exact = 3;
+  // A display rendering of `exact`; never use it to reproduce the ranking.
+  double approximate = 4;
+}
+
+message ResidualScore {
+  // The complete signed integer ranking key.
+  sint64 value = 1;
+}
+
+message SearchHit {
+  uint64 id = 1;
+  oneof score {
+    BinaryScore binary = 2;
+    ResidualScore residual = 3;
+  }
+}
+
+message VersionRange {
+  uint64 minimum = 1;
+  uint64 maximum = 2;
+}
+
+message SearchStats {
+  uint64 documents_scored = 1;
+  VersionRange versions = 2;
+  uint64 blocks_visited = 3;
+  uint64 blocks_skipped = 4;
+  uint32 resumes = 5;
+}
+
+message SearchResponse {
+  // Descending by exact score, then ascending by id.
+  repeated SearchHit hits = 1;
+  SearchStats stats = 2;
+}
+
+message BinaryPlan {
+  uint32 query_bits = 1;
+  uint32 code_bits = 2;
+  uint32 accumulator_levels = 3;
+  uint64 blocks_with_stats = 4;
+  // Absent when no blocks carry statistics; zero is a real spread.
+  optional uint32 block_weight_spread = 5;
+}
+
+message ResidualPlan {
+  uint32 embedding_dimensions = 1;
+  uint32 code_bits = 2;
+}
+
+message ExplainResponse {
+  string path = 1;
+  string path_reason = 2;
+  string kernel = 3;
+  uint64 blocks = 4;
+  string exactness = 5;
+  oneof plan {
+    BinaryPlan binary = 6;
+    ResidualPlan residual = 7;
+  }
+}
+
+message CountResponse {
+  uint64 count = 1;
+}
+
+message Document {
+  uint64 id = 1;
+  oneof value {
+    Code binary_code = 2;
+    // Encoded by the model bound to the index; the float input is not retained.
+    Embedding embedding = 3;
+  }
+  repeated uint32 terms = 4 [packed = true];
+}
+
+message Mutation {
+  oneof operation {
+    Document put = 1;
+    // Deleted ids are retired until compaction.
+    uint64 delete = 2;
+  }
+}
+
+message IngestRequest {
+  // Applied in order. A stream commit boundary may follow this message, but
+  // never splits one mutation.
+  repeated Mutation mutations = 1;
+}
+
+message IngestResponse {
+  uint64 version = 1;
+  uint64 documents_written = 2;
+  uint64 documents_deleted = 3;
+}
+
+message DescribeRequest {}
+
+message BinaryIndex {
+  uint32 code_bits = 1;
+}
+
+message ResidualIndex {
+  uint32 code_bits = 1;
+  // Absent when the index's required model is not loaded.
+  optional uint32 embedding_dimensions = 2;
+  bytes model_id = 3;
+}
+
+message DescribeResponse {
+  uint64 live_documents = 1;
+  uint64 blocks = 2;
+  uint64 blocks_with_stats = 3;
+  oneof index {
+    BinaryIndex binary = 4;
+    ResidualIndex residual = 5;
+  }
+}

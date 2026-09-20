@@ -1,0 +1,75 @@
+# Evaluation defaults. See README.md before using this profile outside a trusted namespace.
+cluster:
+  # Defaults to the Helm release name. Must be a DNS label of at most 48 bytes,
+  # so yesno-operator does not rewrite it before putting it on Pods.
+  name: ""
+
+yesno:
+  image: yesnod:local
+  imagePullPolicy: IfNotPresent
+  # One leader and one asynchronous follower.
+  instances: 2
+  failoverDelaySecs: 30
+  shutdownGraceSecs: 30
+  # haiiie's measured 32-shard default trades about 12% ingest rate against
+  # 8 shards for better parallel reads. The value is fixed at DB creation.
+  shards: 32
+  storage:
+    size: 10Gi
+    storageClassName: local-storage
+  # allowInsecure is only for a trusted evaluation cluster. The secure example
+  # in values-secure.yaml uses cert-manager and a preinitialized haiiie index.
+  config:
+    allowInsecure: true
+    certManager: null
+  resources: {}
+
+plugin:
+  image: haiiie:local
+  imagePullPolicy: IfNotPresent
+  index:
+    namespace: 1
+    # A binary-code demonstration index; null opens an existing index only.
+    createDims: 256
+    # When set, the model file must already be inside the plugin image.
+    residualModelPath: ""
+  # Eight workers were the measured plateau for haiiie's larger scans.
+  threads: 8
+  port: 50071
+  rustLog: info
+  # Only enabled for yesno.config.allowInsecure. The operator's secure mTLS
+  # credentials are not mounted in the plugin, and the peer adapter cannot use
+  # client certificates yet.
+  flight:
+    enabled: true
+    endpoint: http://127.0.0.1:50051
+  control:
+    enabled: true
+    endpoint: http://127.0.0.1:50052
+  # Omitted limits leave yesnod's advertised defaults. The peer reads them
+  # from ServerHello and splits wide lane sets when necessary.
+  channel: {}
+  resources: {}
+  probes:
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 2
+    liveness:
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    startup:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 60
+
+service:
+  type: ClusterIP
+  port: 50071
+  # Selects the operator's current leader Pod, including after promotion.
+  leader:
+    enabled: true
+  # Follower snapshots may lag acknowledged writes.
+  followers:
+    enabled: false

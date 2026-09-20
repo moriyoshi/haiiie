@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    steps:
+      # Both repositories are checked out **under the workspace**, as siblings.
+      # `actions/checkout` refuses a `path:` that escapes the workspace, so the
+      # earlier `path: ../yesno` could not have worked; this layout is what makes
+      # the manifest's `../../yesno/yesno-core` resolve, because a crate at
+      # `haiiie/haiiie-core/` reaches `yesno/yesno-core` by exactly that route.
+      - uses: actions/checkout@v4
+        with:
+          path: haiiie
+
+      - name: Check out yesnodb beside this repository
+        uses: actions/checkout@v4
+        with:
+          repository: moriyoshi/yesnodb
+          path: yesno
+          ref: b712a03624d36f2a9cb9755c398387395dc3b0c3
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: haiiie
+
+      # One command, so CI and a local run cannot drift into checking
+      # different things. The script counts its own steps and fails a short
+      # run, which is what stops a partial pass reading as a pass.
+      - name: gate
+        working-directory: haiiie
+        run: ./scripts/gate.sh
+
+  msrv:
+    name: builds at the MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: haiiie
+      - name: Check out yesnodb beside this repository
+        uses: actions/checkout@v4
+        with:
+          repository: moriyoshi/yesnodb
+          path: yesno
+          ref: b712a03624d36f2a9cb9755c398387395dc3b0c3
+      # yesno-core and yesno-plugin require 1.95; build the full workspace there.
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: haiiie
+      - working-directory: haiiie
+        run: cargo build --workspace
+
+# There is deliberately **no global `RUSTFLAGS: -D warnings`**.
+#
+# `RUSTFLAGS` applies to every crate cargo compiles, path dependencies included,
+# and that was verified rather than assumed: building `haiiie-core` under
+# `RUSTFLAGS=-D missing_docs` fails inside `yesno-core`, not here. So the flag
+# would make this repository's CI red for warnings introduced in a tree that is
+# not ours to change and is under active daily development.
+#
+# It also bought nothing. `cargo clippy --workspace -- -D warnings`, which the
+# gate already runs, lints workspace members only -- exactly the crates whose
+# warnings this project can actually fix.
